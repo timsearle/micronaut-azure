@@ -28,11 +28,14 @@ import io.micronaut.core.util.ArgumentUtils;
 import io.micronaut.core.util.StringUtils;
 import jakarta.inject.Singleton;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Default implementation that delegates to {@link CryptographyClient}.
+ *
+ * <p>Maintains a bounded LRU cache of {@link CryptographyClient} instances to avoid
+ * creating a new client for every signing operation while preventing unbounded memory growth.</p>
  */
 @Singleton
 @BootstrapContextCompatible
@@ -41,14 +44,23 @@ import java.util.concurrent.ConcurrentHashMap;
 @Requires(property = AzureKeyVaultConfigurationProperties.PREFIX + ".keys.signing.enabled", value = StringUtils.TRUE)
 public class DefaultKeyVaultSigningClient implements KeyVaultSigningClient {
 
+    private static final int MAX_CACHED_CLIENTS = 100;
+
     private final TokenCredential tokenCredential;
-    private final Map<String, CryptographyClient> clients = new ConcurrentHashMap<>();
+    private final Map<String, CryptographyClient> clients;
 
     /**
      * @param tokenCredential Azure token credentials
      */
     public DefaultKeyVaultSigningClient(TokenCredential tokenCredential) {
         this.tokenCredential = tokenCredential;
+        // Bounded LRU cache - removes eldest entry when size exceeds MAX_CACHED_CLIENTS
+        this.clients = new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, CryptographyClient> eldest) {
+                return size() > MAX_CACHED_CLIENTS;
+            }
+        };
     }
 
     @Override
@@ -60,9 +72,13 @@ public class DefaultKeyVaultSigningClient implements KeyVaultSigningClient {
             throw new IllegalArgumentException("keyId cannot be blank");
         }
 
-        CryptographyClient client = clients.computeIfAbsent(keyId, this::buildClient);
+        CryptographyClient client = getOrCreateClient(keyId);
         SignResult result = client.signData(algorithm, data);
         return result.getSignature();
+    }
+
+    private synchronized CryptographyClient getOrCreateClient(String keyId) {
+        return clients.computeIfAbsent(keyId, this::buildClient);
     }
 
     private CryptographyClient buildClient(String keyId) {

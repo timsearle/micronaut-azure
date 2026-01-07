@@ -8,3 +8,54 @@ dependency:micronaut-discovery-client[groupId="io.micronaut.discovery"]
 NOTE: Azure doesn't allow _ and . in name of the secrets so the secret with name SECRET-ONE can be resolved also with SECRET_ONE and SECRET.ONE
 
 TIP: See the guide for https://guides.micronaut.io/latest/micronaut-cloud-secrets-azure.html[Securely store Micronaut application secrets in Azure Key Vault] to learn more.
+
+To expose Key Vault keys as part of Micronaut's distributed configuration, enable the key client:
+
+[configuration]
+----
+azure:
+  key-vault:
+    keys:
+      enabled: true
+----
+
+When enabled, every key is available from the Micronaut `Environment` at `azure.key-vault.keys.<key-name>`. For each key Micronaut publishes:
+
+- The `KeyVaultKey` itself under `azure.key-vault.keys.<key-name>`
+- A list of permitted key operations at `azure.key-vault.keys.<key-name>.operations`
+- The associated `JsonWebKey` at `azure.key-vault.keys.<key-name>.json-web-key`
+
+Micronaut provides the same dash, dot, and underscore name aliases that are available for secrets so you can access a key named `signing-key` with `azure.key-vault.keys.signing-key`, `azure.key-vault.keys.signing.key`, or `azure.key-vault.keys.signing_key`.
+
+To sign payloads using a key stored in Azure Key Vault, enable the signing feature and optionally configure the default algorithm:
+
+[configuration]
+----
+azure:
+  key-vault:
+    keys:
+      enabled: true
+      signing:
+        enabled: true
+        default-algorithm: RS256
+----
+
+The `KeyVaultKeySigner` bean lets you sign arbitrary payloads:
+
+[source,java]
+----
+@Singleton
+class JwtSigner {
+    private final KeyVaultKeySigner signer;
+
+    JwtSigner(KeyVaultKeySigner signer) {
+        this.signer = signer;
+    }
+
+    byte[] sign(byte[] payload) {
+        return signer.sign("jwt-signing-key", payload); // uses default algorithm
+    }
+}
+----
+
+If you need to override the algorithm per call, invoke `sign(String keyName, SignatureAlgorithm algorithm, byte[] data)` instead. The signer also accepts key aliases that swap dashes for dots or underscores, mirroring the configuration client behaviour.

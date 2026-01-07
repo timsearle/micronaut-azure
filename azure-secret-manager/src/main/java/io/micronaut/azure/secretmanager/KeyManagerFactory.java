@@ -16,44 +16,44 @@
 package io.micronaut.azure.secretmanager;
 
 import com.azure.core.credential.TokenCredential;
-import com.azure.security.keyvault.secrets.SecretClient;
-import com.azure.security.keyvault.secrets.SecretClientBuilder;
+import com.azure.security.keyvault.keys.KeyClient;
+import com.azure.security.keyvault.keys.KeyClientBuilder;
 import io.micronaut.azure.secretmanager.configuration.AzureKeyVaultConfigurationProperties;
 import io.micronaut.context.annotation.BootstrapContextCompatible;
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
-import org.jspecify.annotations.NonNull;
+import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.util.StringUtils;
-import io.micronaut.discovery.config.ConfigurationClient;
 import jakarta.inject.Singleton;
 
-
 /**
- * Factory to create Azure Secret client.
- * @author Nemanja Mikic
+ * Factory to create Azure Key Vault key client for key operations (signing, verification, etc.).
+ * This factory is independent of the configuration client and can be used solely for key operations.
+ *
+ * @author Tim Searle
  */
 @Factory
-@Requires(property = ConfigurationClient.ENABLED, value = StringUtils.TRUE, defaultValue = StringUtils.FALSE)
-@Requires(property = AzureKeyVaultConfigurationProperties.PREFIX)
 @BootstrapContextCompatible
-public class SecretManagerFactory {
+@Requires(property = AzureKeyVaultConfigurationProperties.PREFIX)
+@Requires(property = AzureKeyVaultConfigurationProperties.PREFIX + ".keys.enabled", value = StringUtils.TRUE)
+public class KeyManagerFactory {
 
     /**
-     * Creates a {@link SecretClient} instance.
+     * Creates a {@link KeyClient} instance for key operations.
      *
      * @param tokenCredential                      azure credentials
      * @param azureKeyvaultConfigurationProperties key vault configuration
-     * @return an instance using defaults.
+     * @return a key client instance using defaults.
      */
     @Singleton
-    public SecretClient secretClient(
+    @Requires(classes = KeyClient.class)
+    public KeyClient keyClient(
             @NonNull TokenCredential tokenCredential,
             @NonNull AzureKeyVaultConfigurationProperties azureKeyvaultConfigurationProperties
     ) {
-        return new SecretClientBuilder()
+        return new KeyClientBuilder()
                 .vaultUrl(azureKeyvaultConfigurationProperties.getVaultURL())
                 .credential(tokenCredential)
                 .buildClient();
     }
-
 }
